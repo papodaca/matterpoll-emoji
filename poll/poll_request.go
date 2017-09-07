@@ -6,41 +6,45 @@ import (
 	"strings"
 )
 
-type PollRequest struct {
-	TeamId    string
-	ChannelId string
+// Request wraps up all information needed to answer a poll request
+type Request struct {
+	ChannelID string
 	Token     string
 	Message   string
 	Emojis    []string
 }
 
 const (
-	back_tick          = "`"
-	error_wrong_format = `Wrong message format. Try this instead: ` + back_tick + `/poll \"What do you gys wanna grab for lunch?\" :pizza: :sushi:` + back_tick
+	backTick = "`"
+	//ErrorTextWrongFormat is an error message and is used, if the message isn`t formated correct
+	ErrorTextWrongFormat = `The message format is wrong. Try this instead: ` + backTick + `/poll \"What do you gys wanna grab for lunch?\" :pizza: :sushi:` + backTick
+	// ErrorTokenMissmatch is an error message and is used, if the token comparison fails
+	ErrorTokenMissmatch = `An error occurred. Ask your administrator to check the Matterpoll config settings.`
+	// ErrorWrongLength is an error message and is used, if the channel id or the token have a wrong length
+	ErrorWrongLength = `An error occurred. Try the same command again. If it fails again, contact your administrator.`
 )
 
-func NewPollRequest(u map[string][]string) (*PollRequest, error) {
-	p := &PollRequest{}
+// NewRequest validates the data in map and wraps it into a Request struct
+func NewRequest(u map[string][]string) (*Request, error) {
+	p := &Request{}
 	for key, values := range u {
 		switch key {
-		case "team_id":
-			if p.TeamId = values[0]; len(p.TeamId) == 0 {
-				return nil, fmt.Errorf("Unexpected Error: TeamID in request is empty.")
-			}
 		case "channel_id":
-			if p.ChannelId = values[0]; len(p.ChannelId) == 0 {
-				return nil, fmt.Errorf("Unexpected Error: ChannelID in request is empty.")
+			if err := checkIDLength(values[0]); err != nil {
+				return nil, err
 			}
+			p.ChannelID = values[0]
 		case "token":
-			if p.Token = values[0]; len(p.Token) == 0 {
-				return nil, fmt.Errorf("Unexpected Error: Token in request is empty.")
+			if err := checkIDLength(values[0]); err != nil {
+				return nil, err
 			}
+			p.Token = values[0]
 		case "text":
-			var err error
-			p.Message, p.Emojis, err = parseText(values[0])
+			message, emojis, err := parseText(values[0])
 			if err != nil {
 				return nil, err
 			}
+			p.Message, p.Emojis = message, emojis
 		}
 	}
 	return p, nil
@@ -56,11 +60,11 @@ func parseText(text string) (string, []string, error) {
 	case '"':
 		re = regexp.MustCompile("\"([^\"]+)\"(.+)")
 	default:
-		return "", nil, fmt.Errorf(error_wrong_format)
+		return "", nil, fmt.Errorf(ErrorTextWrongFormat)
 	}
 	e := re.FindStringSubmatch(text)
 	if len(e) != 3 {
-		return "", nil, fmt.Errorf(error_wrong_format)
+		return "", nil, fmt.Errorf(ErrorTextWrongFormat)
 	}
 	var emojis []string
 	for _, v := range strings.Split(e[2], " ") {
@@ -68,9 +72,16 @@ func parseText(text string) (string, []string, error) {
 			continue
 		}
 		if len(v) < 3 || !strings.HasPrefix(v, ":") || !strings.HasSuffix(v, ":") {
-			return "", nil, fmt.Errorf(error_wrong_format, v)
+			return "", nil, fmt.Errorf(ErrorTextWrongFormat)
 		}
 		emojis = append(emojis, v[1:len(v)-1])
 	}
 	return e[1], emojis, nil
+}
+
+func checkIDLength(id string) error {
+	if len(id) != 26 {
+		return fmt.Errorf(ErrorWrongLength)
+	}
+	return nil
 }

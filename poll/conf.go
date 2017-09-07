@@ -6,43 +6,50 @@ import (
 	"io/ioutil"
 )
 
-type PollConf struct {
-	Host  string
-	Token string
-	User  PollUser
+// Conf represents the login credentials of a mattermost user
+type Conf struct {
+	Host   string `json:"host"`
+	Listen string `json:"listen"`
+	Token  string `json:"token"`
+	User   User   `json:"user"`
 }
 
-type PollUser struct {
-	Id       string
-	Password string
+// User represents the login credentials of a mattermost user
+type User struct {
+	ID       string `json:"id"`
+	Password string `json:"password"`
 }
 
-func LoadConf(path string) (*PollConf, error) {
+// LoadConf loads a configuration file located at path and parse it to a Conf struct
+func LoadConf(path string) (*Conf, error) {
 	b, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var p PollConf
-	json.Unmarshal(b, &p)
+	var p Conf
+	if err := json.Unmarshal(b, &p); err != nil {
+		return nil, err
+	}
 	if err := p.validate(); err != nil {
 		return nil, err
 	}
 	return &p, nil
 }
 
-func (c *PollConf) validate() error {
+func (c *Conf) validate() error {
 	if len(c.Host) == 0 {
 		return fmt.Errorf("Config `host` is missing")
 	}
-	if len(c.Token) == 0 {
-		//		Ignore this for now
-		//		return fmt.Errorf("Config `token` is missing")
-		fmt.Println("No token is configured. You may set it in the config file")
+	if len(c.Listen) == 0 {
+		return fmt.Errorf("Config `listen` is missing")
 	}
-	if len(c.Token) > 0 && len(c.Token) != 26 {
+	if len(c.Token) == 0 {
+		return fmt.Errorf("Config `token` is missing")
+	}
+	if len(c.Token) != 26 {
 		return fmt.Errorf("Invalid token length. Check you config.json")
 	}
-	if len(c.User.Id) == 0 {
+	if len(c.User.ID) == 0 {
 		return fmt.Errorf("Config `user.id` is missing")
 	}
 	if len(c.User.Password) == 0 {
