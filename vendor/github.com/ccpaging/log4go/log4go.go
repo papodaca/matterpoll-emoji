@@ -14,13 +14,13 @@
 //
 // log := log4go.NewLogger()
 // log.AddFilter("stdout", log4go.DEBUG, log4go.NewConsoleLogWriter())
-// log.AddFilter("log",    log4go.FINE,  log4go.NewFileLogWriter("example.log", true))
+// log.AddFilter("log",    log4go.FINE,  log4go.NewFileLogWriter("example.log", 1))
 // log.Info("The time is now: %s", time.LocalTime().Format("15:04:05 MST 2006/01/02"))
 //
 // The first two lines can be combined with the utility NewDefaultLogger:
 //
 // log := log4go.NewDefaultLogger(log4go.DEBUG)
-// log.AddFilter("log",    log4go.FINE,  log4go.NewFileLogWriter("example.log", true))
+// log.AddFilter("log",    log4go.FINE,  log4go.NewFileLogWriter("example.log", 1))
 // log.Info("The time is now: %s", time.LocalTime().Format("15:04:05 MST 2006/01/02"))
 //
 // Usage notes:
@@ -57,8 +57,8 @@ import (
 
 // Version information
 const (
-	L4G_VERSION = "log4go-v4.0.2"
-	L4G_MAJOR   = 4
+	L4G_VERSION = "log4go-v5.0.1"
+	L4G_MAJOR   = 5
 	L4G_MINOR   = 0
 	L4G_BUILD   = 1
 )
@@ -97,7 +97,7 @@ var (
 	// May require tweaking if you want to wrap the logger
 	DefaultCallerSkip = 2
 
-	// LogBufferLength specifies how many log messages a particular log4go
+	// Default buffer length specifies how many log messages a particular log4go
 	// logger can buffer at a time before writing them.
 	DefaultBufferLength = 32
 )
@@ -116,6 +116,11 @@ type LogRecord struct {
 
 // This is an interface for anything that should be able to write logs
 type LogWriter interface {
+	// Set option about the LogWriter. The options should be set as default.
+	// Must be set before the first log message is written if changed.
+	// You should test more if have to change options while running.
+	SetOption(name string, v interface{}) error
+
 	// This will be called to log a LogRecord message.
 	LogWrite(rec *LogRecord)
 
@@ -146,12 +151,14 @@ func NewFilter(lvl Level, writer LogWriter) *Filter {
 		
 		LogWriter:	writer,
 	}
-	
+
 	go f.run()
 	return f
 }
-	
-func (f *Filter) WriteToChan(rec *LogRecord) {
+
+// This is the filter's output method. This will block if the output
+// buffer is full. 
+func (f *Filter) writeToChan(rec *LogRecord) {
 	if f.closed {
 		fmt.Fprintf(os.Stderr, "LogWriter: channel has been closed. Message is [%s]\n", rec.Message)
 		return
@@ -178,6 +185,7 @@ func (f *Filter) Close() {
 	// sleep at most one second and let go routine running
 	// drain the log channel before closing
 	for i := 10; i > 0; i-- {
+		// Must call Sleep here, otherwise, may panic send on closed channel
 		time.Sleep(100 * time.Millisecond)
 		if len(f.rec) <= 0 {
 			break
@@ -236,7 +244,7 @@ func NewDefaultLogger(lvl Level) Logger {
 // you want to guarantee that all log messages are written.  Close removes
 // all filters (and thus all LogWriters) from the logger.
 func (log Logger) Close() {
-	// Close all open loggers
+	// Close all filters
 	for name, filt := range log {
 		filt.Close()
 		delete(log, name)
@@ -247,6 +255,10 @@ func (log Logger) Close() {
 // higher.  This function should not be called from multiple goroutines.
 // Returns the logger for chaining.
 func (log Logger) AddFilter(name string, lvl Level, writer LogWriter) Logger {
+	if filt, isExist := log[name]; isExist {
+		filt.Close()
+		delete(log, name)
+	}
 	log[name] = NewFilter(lvl, writer)
 	return log
 }
@@ -269,7 +281,7 @@ func (log Logger) dispatch(rec *LogRecord) {
 		if rec.Level < filt.Level {
 			continue
 		}
-		filt.WriteToChan(rec)
+		filt.writeToChan(rec)
 	}
 }
 
@@ -280,10 +292,12 @@ func (log Logger) intLogf(lvl Level, format string, args ...interface{}) {
 	}
 
 	// Determine caller func
-	pc, _, lineno, ok := runtime.Caller(DefaultCallerSkip)
 	src := ""
-	if ok {
-		src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+	if DefaultCallerSkip >= 0 {
+		pc, _, lineno, ok := runtime.Caller(DefaultCallerSkip)
+		if ok {
+			src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
+		}
 	}
 
 	msg := format

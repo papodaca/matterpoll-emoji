@@ -5,10 +5,7 @@ package log4go
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
-	"runtime"
-	"path/filepath"
 )
 
 var (
@@ -16,18 +13,13 @@ var (
 )
 
 func init() {
-	Global = Logger{
-		"stdout": NewFilter(DEBUG, NewConsoleLogWriter().SetColor(true).SetFormat("%T %L %s %M")),
+	Global = Logger {
+		"stdout": NewFilter(DEBUG, NewConsoleLogWriter().Set("format", "%T %L %s %M")),
 	}
 }
 
-// Wrapper for (*Logger).LoadConfiguration
-func LoadConfiguration(filename string) {
-	Global.LoadConfig(filename)
-}
-
-func LoadConfigBuf(filename string, buf []byte) {
-	Global.LoadConfigBuf(filename, buf)
+func GetGlobalLogger() Logger {
+	return Global
 }
 
 // Wrapper for (*Logger).AddFilter
@@ -38,133 +30,6 @@ func AddFilter(name string, lvl Level, writer LogWriter) {
 // Wrapper for (*Logger).Close (closes and removes all logwriters)
 func Close() {
 	Global.Close()
-}
-
-// Compatibility with `log`
-func compat(lvl Level, calldepth int, args ...interface{}) {
-	// Determine caller func
-	pc, _, lineno, ok := runtime.Caller(calldepth)
-	src := ""
-	if ok {
-		src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
-	}
-
-	msg := ""
-	if len(args) > 0 {
-		msg = fmt.Sprintf(strings.Repeat(" %v", len(args))[1:], args...)
-	}
-	msg = strings.TrimRight(msg, "\r\n")
-
-	Global.Log(lvl, src, msg)
-	if lvl == ERROR {
-		Global.Close()
-		os.Exit(0)
-	} else if lvl == CRITICAL {
-		Global.Close()
-		panic(msg)
-	}
-}
-
-func compatf(lvl Level, calldepth int, format string, args ...interface{}) {
-	// Determine caller func
-	pc, _, lineno, ok := runtime.Caller(calldepth)
-	src := ""
-	if ok {
-		src = fmt.Sprintf("%s:%d", filepath.Base(runtime.FuncForPC(pc).Name()), lineno)
-	}
-
-	msg := fmt.Sprintf(format, args...)
-	msg = strings.TrimRight(msg, "\r\n")
-
-	Global.Log(lvl, src, msg)
-	if lvl == ERROR {
-		Global.Close()
-		os.Exit(0)
-	} else if lvl == CRITICAL {
-		Global.Close()
-		panic(msg)
-	}
-}
-
-func Crash(args ...interface{}) {
-	compat(CRITICAL, DefaultCallerSkip, args ...)
-}
-
-// Logs the given message and crashes the program
-func Crashf(format string, args ...interface{}) {
-	compatf(CRITICAL, DefaultCallerSkip, format, args ...)
-}
-
-// Compatibility with `log`
-func Exit(args ...interface{}) {
-	compat(ERROR, DefaultCallerSkip, args ...)
-}
-
-// Compatibility with `log`
-func Exitf(format string, args ...interface{}) {
-	compatf(ERROR, DefaultCallerSkip, format, args ...)
-}
-
-// Compatibility with `log`
-func Stderr(args ...interface{}) {
-	compat(WARNING, DefaultCallerSkip, args ...)
-}
-
-// Compatibility with `log`
-func Stderrf(format string, args ...interface{}) {
-	compatf(WARNING, DefaultCallerSkip, format, args ...)
-}
-
-// Compatibility with `log`
-func Stdout(args ...interface{}) {
-	compat(INFO, DefaultCallerSkip, args ...)
-}
-
-// Compatibility with `log`
-func Stdoutf(format string, args ...interface{}) {
-	compatf(INFO, DefaultCallerSkip, format, args ...)
-}
-
-// Compatibility with `log`
-func Fatal(v ...interface{}) {
-	compat(ERROR, DefaultCallerSkip, v ...)
-}
-
-func Fatalf(format string, v ...interface{}) {
-	compatf(ERROR, DefaultCallerSkip, format, v ...)
-}
-
-func Fatalln(v ...interface{}) {
-	compat(ERROR, DefaultCallerSkip, v ...)
-}
-
-func Output(calldepth int, s string) error {
-	compat(INFO, calldepth, s)
-	return nil
-}
-
-func Panic(v ...interface{}) {
-	compat(CRITICAL, DefaultCallerSkip, v ...)
-}
-
-func Panicf(format string, v ...interface{}) {
-	compatf(CRITICAL, DefaultCallerSkip, format, v ...)
-}
-
-func Panicln(v ...interface{}) {
-	compat(CRITICAL, DefaultCallerSkip, v ...)
-}
-
-func Print(v ...interface{}) {
-	compat(INFO, DefaultCallerSkip, v ...)
-}
-
-func Printf(format string, v ...interface{}) {
-	compatf(INFO, DefaultCallerSkip, format, v ...)
-}
-
-func Println(v ...interface{}) {
-	compat(INFO, DefaultCallerSkip, v ...)
 }
 
 // Send a log message manually
